@@ -64,7 +64,7 @@ $(function() {
 > * Easy to do with R.
 <br>
 > * http://tillbergmann.com/talks/CSP/ (Slides)
-> * github (RMarkdown)
+> * http://github.com/tillbe/CSP-talk (RMarkdown)
 
 ---
 
