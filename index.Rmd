@@ -1,0 +1,750 @@
+---
+title       : Data Exploration, Model Diagnostics, and Visualization with R 
+subtitle    : Follow along on http://tillbergmann.com/talks/CSP/
+author      : Till Bergmann
+job         : University of California, Merced
+framework   : io2012       # {io2012, html5slides, shower, dzslides, ...}
+highlighter : highlight.js  # {highlight.js, prettify, highlight}
+hitheme     : solarized_light      # 
+revealjs    : 
+    theme: "simple"
+    progress: "false"
+    center: "true"
+    transition: "linear"
+widgets     : [mathjax]            # {mathjax, quiz, bootstrap}
+mode        : standalone # {standalone, draft}
+knit        : slidify::knit2slides
+---
+
+<style>
+em {
+  font-style: italic
+}
+strong {
+  font-weight: bold;
+}
+
+article p, article li, article li.build, section p, section li{
+  font-family: 'Open Sans','Helvetica', 'Crimson Text', 'Garamond',  'Palatino', sans-serif;
+  text-align: justify;
+  font-size:32px;
+  line-height: 1.5em;
+  color: #444;
+}
+
+</style>
+
+
+<!-- Limit image width and height -->
+<style type="text/css">
+img {     
+  max-height: 560px;     
+  max-width: 964px; 
+}
+</style>
+ 
+<!-- Center image on slide -->
+<script type="text/javascript" src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.7.min.js"></script>
+<script type="text/javascript">
+$(function() {     
+  $("p:has(img)").addClass('centered'); 
+});
+</script>
+
+
+
+## Introduction
+
+> * Data -> Model -> Result
+> * Often, steps in between are ignored or neglected.
+> * Loss of predictive/analytical power.
+<br>
+> * Know your data before you run a model.
+> * strong statistical practices help!
+> * Easy to do with R.
+<br>
+> * http://tillbergmann.com/talks/CSP/ (Slides)
+> * github (RMarkdown)
+
+---
+
+## Two principles:
+
+> * *Visualization* as a tool to *see into* your data.
+  <ul class="build incremental">
+     <li> Often neglected in favor of measures of central tendency. </li>
+     <li> The right visualization can tell you a lot about your data.</li>
+  </ul>
+
+> * *Diagnostics* to study how points are participating in your model.
+  <ul class="build incremental">
+     <li> No individual point should change your model drastically. </li>
+     <li> Generally: Leave-one-out diagnostics </li>
+     <li> Diagnostic measures: leverage, discrepancy, influence </li>
+  </ul>
+
+---
+
+--- &test
+
+## Some data
+
+Let's start with some example data, typical for experimental data. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, cache=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(pander)
+library(cowplot)
+library(shiny)
+library(knitr)
+library(slidifyLibraries)
+set.seed(42)
+knitr::opts_chunk$set(cache=FALSE)
+opts_chunk$set(dev.args=list(bg="transparent"))
+
+# theme_set(theme_grey(base_size = 18)) 
+# theme_update(plot.background = element_rect(fill = "transparent", colour = NA))
+theme_set(theme_cowplot(font_size=26))
+
+
+df = data.frame(female   =   rnorm(20, mean = 20, sd = 2.0), 
+                male = c(rnorm(10, mean = 30, sd = 0.5), 
+                           rnorm(10, mean = 25, sd = 0.5)))
+df = gather(df, group, rt) %>% mutate(group = as.factor(group))
+df$group = as.factor(df$group)
+
+```
+
+*** {name: left}
+```{r}
+summary(df) 
+```
+
+*** {name: right}
+
+```{r}
+head(df)
+```
+
+--- 
+
+## Summary statistics
+
+```{r, class="fragment"}
+library(dplyr)
+agg = df %>% 
+          group_by(group) %>% 
+          summarise(m=mean(rt), sd=sd(rt))
+agg
+```
+
+> * `Females` have a lower mean reaction time than `males`.
+> * The standard deviation is roughly the same.
+
+---
+
+## Simple t-test
+
+```{r}
+with(df,
+     t.test(rt ~ group)
+    ) 
+```
+
+---
+
+## Success!?
+
+> * P-value lower than 0.05, significant result, done.
+
+> * We are assuming that the groups are _homogenous_.
+
+> * The summary statistics don't tell us anything about this.
+
+> * Let's visualize the data to see what's going on!
+
+> * Bar plots are commonly used ...
+
+> * But not really helpful!
+
+
+--- &test
+
+## Standard: Bar plot 
+
+```{r}
+gp = ggplot(agg, aes(y=m, x=group, fill = group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymax = m + sd, ymin = m - sd ), width = 0.25) 
+```
+
+*** {name: left}
+```{r, echo=FALSE, , fig.height=6}
+gp
+```
+
+*** {name: right}
+
+> - Only the summary statistics visible
+> - No information about the *distribution*.
+
+
+--- 
+
+## Drawbacks of barplots
+
+> * It doesn't provide more information than pure numbers. Visualizing a mean standard deviation  does not provide you any more information than simply writing it down.
+> * Information is lost: Bar plots don't show any information about sample size or the distribution of data.
+> * Bad data-ink ratio: A lot of ink is used to not display additional information (see Tufte).
+> * For more, see: [Weissgerber, Milic, Winham, and Garovic (2015)](http://dx.doi.org/10.1371/journal.pbio.1002128).
+
+--- &test
+
+## Alternative I: Boxplot
+
+```{r, eval=FALSE}
+ggplot(df, aes(x = group, y = rt, col =group)) +
+  stat_boxplot(geom ='errorbar') + # adds whiskers to the lines
+  geom_boxplot() 
+```
+
+
+*** {name: left}
+```{r, echo=FALSE, , fig.height=6}
+ggplot(df, aes(x = group, y = rt, col =group)) +
+  stat_boxplot(geom ='errorbar') + # adds whiskers to the lines
+  geom_boxplot() 
+```
+
+*** {name: right}
+
+> - Some information about the *distribution*.
+> - Such as minimum, maximum, overlap.
+> - We still don't know where *individual* points are.
+
+
+--- &test
+
+## Alternative II: Dot plots
+
+```{r}
+gp = ggplot(df, aes(x = group, y = rt, col = group)) + 
+     geom_point(size = 3, 
+                position = position_jitter(width = .25)) 
+```
+
+
+*** {name: left}
+```{r, echo=FALSE, , fig.height=6}
+gp 
+
+```
+
+*** {name: right}
+
+> - `female` group spread out evenly.
+> - But: `male` group is bimodal!
+> - We could *not* see this before.
+
+
+---
+
+## Large $N$ (10,000)
+
+![Alt text](large_n_example.png)
+
+--- 
+
+## Visualization is important
+
+> - Visualizing your data in the right way can you tell you a lot more than running a *simple test* or looking at *summary statistics*.
+> - Before you run any tests, make sure you explore your data so you know what you are dealing with.
+> - When you find "abnormalities" or unexpected behavior in your data, make sure you find out why.
+
+---
+
+## Why is our distribution bimodal?
+
+> - We don't know (actually, because I made it up).
+> - There might be an unmeasured latent variable responsible for any potential differences.
+> - In experimental settings, there might have been some distraction happening for some participants (cows?)
+> - If you can't find a reason, you can always try to get more data.
+> - There might be some *outliers* in your data.
+
+
+---
+
+## Principle II: Influential data points
+
+> * *Leave-one-out* diagnostics: How does my model change if I include/exclude a data point?
+> * It shouldn't change by a large degree!
+> * Such *diagnostics* are readily available in R.
+
+---
+
+## Outliers and unusual points
+
+### What are outliers? 
+
+> * points that do not fit your model well (*extreme points* )
+> * they can also significantly influence your model (coefficients)
+
+### How do we find outliers?
+
+> - visually (previous)
+> - different measures (next)
+
+---
+
+## Different types of influential points
+
+Let's consider a simple case with one predictor variable ($x$) and one outcome variable ($y$).
+
+> - **High leverage point**: its $x$-value is either much higher or lower than the mean of the predictor.
+> - **High discrepancy point**: unusual $y$ value given its $x$ value.
+> - **Influential data point**: combination of leverage and discrepancy.
+
+---
+
+```{r, echo=FALSE,fig.width=21, fig.height=7}
+set.seed(42)
+x = rep(c(1:9,20),3)
+y = runif(1, 0, 10)*x+runif(10, -15, 15)
+group = c(rep('no_influence',10),rep('influence',10), rep('no_lev',10))
+leverage = data.frame(x=x,y=y, group=group, name=rep(1:10,3), mark=0)
+leverage[20,]$y=50
+leverage[30,]$x=5
+leverage[30,]$y=10
+leverage[c(10,20,30),]$mark=1
+leverage$mark = as.factor(leverage$mark)
+
+p_noinf=ggplot(leverage[1:10,], aes(x=x, y=y)) + 
+  geom_point(aes(shape=mark),size=5) + 
+  geom_smooth(method='lm', se=FALSE,fullrange=TRUE) + 
+  geom_smooth(method='lm', data=leverage[1:9,], se=FALSE, col='red',fullrange=TRUE)+
+  guides(shape=FALSE)+
+  ylim(0,200) + 
+  xlim(0,22)
+
+p_inf=ggplot(leverage[11:20,], aes(x=x, y=y)) + 
+  geom_point(aes(shape=mark),size=5) + 
+  geom_smooth(method='lm', se=FALSE,fullrange=TRUE) + 
+  geom_smooth(method='lm', data=leverage[11:19,], se=FALSE, col='red',fullrange=TRUE)+
+  guides(shape=FALSE) +
+  ylim(0,200) + 
+  xlim(0,22)
+
+p_nolev=ggplot(leverage[21:30,], aes(x=x, y=y)) + 
+  geom_point(aes(shape=mark),size=5) + 
+  geom_smooth(method='lm', se=FALSE,fullrange=TRUE) + 
+  geom_smooth(method='lm', data=leverage[11:19,], se=FALSE, col='red',fullrange=TRUE)+
+  guides(shape=FALSE) + 
+  ylim(0,200) + 
+  xlim(0,22) 
+```
+
+## High Leverage
+
+* $x$-value is either much higher or lower than the mean of the predictor.
+
+```{r, fig.height=6, fig.width=10, echo=FALSE}
+p_noinf
+```
+
+---
+
+## High Discrepancy
+
+* unusual $y$ value given its $x$ value.
+
+```{r, fig.height=6, fig.width=10, echo=FALSE}
+p_nolev 
+```
+
+---
+
+## High Influence
+
+* combination of leverage and discrepancy: influences our model!
+
+```{r, fig.height=6, fig.width=10, echo=FALSE}
+p_inf
+```
+
+--- &test
+
+## Example data (Field et al., 2012):
+
+```{r, echo=FALSE, warning=FALSE}
+x = c(seq(10,100,15), 500)
+y = c(seq(1000,7000,1000)+round(runif(7,-100,100)), 10000)
+pubs = data.frame(pubs=x, deaths=y, name=1:8)
+
+gp = ggplot(pubs, aes(x=pubs, y=deaths)) + 
+  geom_point(size=5) + 
+  geom_smooth(method='lm', se = FALSE, size=1,fullrange=TRUE) +
+  scale_x_continuous('Number of Pubs', limits=c(0, 600)) +
+    scale_y_continuous('Deaths', limits=c(0, 10500), breaks=seq(0, 10000,2500))+
+  geom_text(aes(label=name),hjust=-1,vjust=0, size=10) +
+  guides(size=FALSE) +
+  theme(plot.margin = unit(c(0.5, 1.5, 0.5, 0.5), "cm"))
+```
+
+$x$ (`pubs`): Number of pubs within a borough (district) of London  
+$y$ (`deaths`): Number of deaths in that borough over a certain period of time. 
+
+*** {name: left}
+
+```{r}
+pubs
+```
+
+*** {name: right}
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=5}
+gp  
+```
+
+---
+
+## Leverage
+
+>* Unusual predictor value.
+>* In simple linear regression, this is simply the distance from the mean of the predictors.
+>* The standardized measure is called *hat value*:
+$$\begin{aligned} 
+h_i &= \frac{1}{n} + \frac{(X_i - \bar{X})^2}{\sum^n_{j=1}(X_j-\bar{X})^2}
+\end{aligned}$$  
+>* bound between $1/n$ and 1, with 1 denoting highest leverage
+
+--- &test 
+
+## Calculating Leverage
+
+*** {name: left}
+
+```{r}
+# fitting linear model
+mod.pubs = lm(deaths~pubs, data=pubs)
+
+# getting hatvalues and printing them
+hs = hatvalues(mod.pubs)
+data.frame(pt = pubs$name, 
+           hat = hs)
+```
+
+*** {name: right}
+
+```{r, echo=FALSE, fig.height=5, fig.width=6, warning=FALSE, message=FALSE}
+hats = data.frame(pt = pubs$name %>% as.factor(), 
+           hat = hs)
+ggplot(hats, aes(x=pt, y=hat)) + geom_point(size=3)
+```
+
+> * Point 8 has extremely high leverage.
+
+--- 
+
+## Discrepancy
+
+>* unusual $y$ value given its $x$ value.
+>* Points that do not fit well into our model.
+>* Relevant measure are the *residuals*
+>* measures the error of our prediction/fit
+
+--- &test
+
+## Residuals
+
+*** {name: left}
+
+```{r, echo=FALSE}
+pubs.fitted = data.frame(pubs=x, fitted=fitted(mod.pubs), res = residuals(mod.pubs), name=1:8)
+
+
+helper = data.frame(x=rep(pubs.fitted$pubs[8],2), y=c(0,pubs.fitted$res[8]+20))
+
+gp2= ggplot(pubs.fitted, aes(x=pubs, y=res)) + 
+  geom_point(size=5) +
+  geom_hline(aes(yintercept=0), linetype='dashed', alpha=0.7, size=1) +
+  geom_line(aes(x=x,y=y,group=1), size=2,
+            arrow = arrow( type = "closed", length = unit(0.25, 'inches')),
+            color='red', data=helper)+
+  scale_x_continuous('Number of Pubs', limits=c(0, 600)) +
+  scale_y_continuous('Residuals', limits=c(-2500, 2500), breaks=seq(-2000,2000,1000)) +
+  geom_text(aes(label=name),hjust=-1,vjust=0, size=10) +
+  guides(size=FALSE)#+
+#   theme(plot.margin = unit(c(0.5, 1.5, 0.5, 0.5), "cm"))
+gp2
+```
+
+*** {name: right}
+
+```{r, eval=FALSE}
+residuals(mod.pubs)
+```
+```{r, echo=FALSE}
+data.frame(residuals(mod.pubs)) %>% select(residual=1) %>% mutate(pt = pubs$name)
+```
+
+
+> * Point 8 does not have the highest residual!
+
+--- 
+
+## Studentized Residuals
+
+> * Fit a model without the case of interest, then take residual.
+> * Scaled by its hat-value and SD of residuals.
+> * A high value means high leverage.
+> * $$\begin{align}
+E_{i}^{*} = \frac{E_i}{S_{E(-i)}\sqrt{1-h_i}} \end{align}$$
+> * Follow a $t$-distribution: useful for confidence intervals
+
+--- &twocolfull
+
+## Studentized Residuals
+
+*** =left
+
+```{r, echo=FALSE, fig.height=6, fig.width=8}
+helper = data.frame(x=rep(pubs$pubs[8],2), y=c(0,rstudent(mod.pubs)[8]))
+gp5= ggplot(data.frame(pubs=pubs$pubs, res=rstudent(mod.pubs), name=1:8), aes(x=pubs, y=res)) + 
+  geom_point(size=4) +
+  geom_hline(aes(yintercept=0), linetype='dashed', alpha=0.7) +
+  geom_line(aes(x=x,y=y,group=1),
+            arrow = arrow( type = "closed", length = unit(0.25, 'inches')),
+            color='red', size=1.5, data=helper)+
+  scale_x_continuous('Number of Pubs', limits=c(0, 600)) +
+  scale_y_continuous('Studentized Residuals') +
+  geom_text(aes(label=name),hjust=-1,vjust=0, size=10) +
+  guides(size=FALSE)
+gp5
+```
+
+
+*** =right
+
+```{r, eval=FALSE}
+rstudent(mod.pubs)
+```
+```{r, echo=FALSE}
+data.frame(rstudent(mod.pubs)) %>% select(residual=1) %>% mutate(pt = pubs$name)
+```
+
+*** =fullwidth
+
+> * Point 8 has now the highest residual by far.
+
+---
+
+## Assessing influence
+
+> * Data point 8 has both high discrepancy and high leverage.
+> * Likely that it is also influential.
+> * Several measures exist for influence:
+  <ul class="build incremental">
+     <li> DFFITS (based on studentized residuals) </li>
+     <li> Cook's <em>d</em> (based on standardized residuals)</li>
+     <li> DFBETAS (for each individual predictor) </li>
+  </ul>
+> * We will look at DFFITS.
+
+
+---
+
+## DFFITS
+
+> * fit model with and without data point.
+> * take difference between the predicted values.
+> * do this for all predictors and data points.
+> * $$\begin{align}
+DFFITS_{i} = E_{i}^{*}\sqrt{\frac{h_i}{1-h_i}}
+\end{align}$$
+> * $E_{i}$ is the studentized residual  (discrepancy)
+> * $h_{i}$ is the hat-value (leverage)
+> * influence = discrepancy $\times$ leverage
+
+--- &test
+
+## Calculating DFFITS
+
+*** {name: left}
+
+```{r, eval=FALSE}
+dffits(mod.pubs)
+```
+
+```{r, echo=FALSE}
+dffits = data.frame(dffits(mod.pubs)) %>% select(dffit=1) %>% mutate(pt = pubs$name %>% as.factor())
+dffits
+```
+
+*** {name: right}
+
+```{r, echo=FALSE}
+ggplot(dffits, aes(x=pt, y=dffit)) + geom_point(size=3)
+```
+
+--- &test
+
+## The two models:
+
+*** {name: left}
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(pubs, aes(x=pubs, y=deaths)) + 
+  geom_point(size=5) + 
+  geom_smooth(method='lm', se = FALSE, size=1,fullrange=TRUE) +
+  geom_smooth(data=pubs %>% filter(name!=8), method='lm', se = FALSE, size=1,fullrange=TRUE, col="red") +
+
+  scale_x_continuous('Number of Pubs', limits=c(0, 600)) +
+    scale_y_continuous('Deaths', limits=c(0, 10500), breaks=seq(0, 10000,2500))+
+  geom_text(aes(label=name),hjust=-1,vjust=0, size=10) +
+  guides(size=FALSE)
+```
+
+*** {name: right}
+
+```{r, echo=TRUE}
+pubs_red = pubs %>% 
+              filter(name!=8)
+mod.reduced = lm(deaths~pubs, 
+                 data=pubs_red)
+new_data = data.frame(pubs = 500)
+```
+
+```{r, eval=FALSE}
+predict(mod.pubs, 
+        newdata = new_data)
+```
+
+```{r, echo=FALSE}
+predict(mod.pubs, 
+        newdata = new_data) %>% as.numeric()
+```
+
+```{r, eval=FALSE}
+predict(mod.reduced, 
+        newdata = new_data)
+```
+
+```{r, echo=FALSE}
+predict(mod.reduced, 
+        newdata = new_data) %>% as.numeric()
+```
+
+---
+
+## Diagnostic plots
+
+> * We can combine all these measures into one plot.
+> * $x$: hat-values (leverage)
+> * $y$: studentized residuals (discrepancy)
+> * point size: DFFITS (influence)
+
+```{r, echo=FALSE, cache=FALSE}
+getMeasures = function(model){
+  hat = hatvalues(model)
+  dffits = dffits(model)
+  stud.res = rstudent(model)
+  return(data.frame(hat, dffits, stud.res))
+}
+impPlot = function(df){
+  df = df %>% add_rownames('observation')
+  df$mark = abs(df$dffits)>getCutoff(1,8)
+  p= ggplot(df, aes(x=hat, y=stud.res)) + 
+    geom_rect(aes(xmin=2*mean(hat), xmax=Inf, ymin=-Inf, ymax=Inf), fill='grey90', alpha=0.3)+
+    geom_rect(aes(xmin=-Inf, xmax=Inf, ymin=1.96, ymax=Inf), fill='grey90', alpha=0.3)+
+    geom_rect(aes(xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=-1.96), fill='grey90', alpha=0.3)+
+    geom_point(aes(size=abs(dffits), col=abs(dffits)>getCutoff(1,8))) +
+    scale_size(range = c(5, 10)) + 
+    geom_vline(aes(xintercept=2*mean(hat)))+
+    geom_hline(aes(yintercept=1.96))+
+    geom_hline(aes(yintercept=-1.96))+
+    # geom_text(aes(label=observation),hjust=-2,vjust=0, size=5)+
+    scale_colour_manual(values = c("black","red")) +
+    guides(size=FALSE, col=FALSE) +
+    xlim(0,1) + 
+    xlab('Hat Value') +
+    ylab('Studentized Residual')
+  return(p)
+}
+
+
+getCutoff = function(k, n){
+  return(2 * sqrt((k+1)/(n-k-1)))
+}
+```
+
+---
+
+## Influence plots
+
+```{r, echo=FALSE, fig.width=10, fig.height=9}
+impPlot(getMeasures(mod.pubs)) 
+```
+
+--- &test
+
+## Influence plots
+
+```{r, echo=TRUE, eval=FALSE, fig.width=7, fig.height=5}
+library(car)
+influencePlot(mod.pubs)
+```
+
+*** {name: left}
+```{r, echo=FALSE, fig.height=5}
+library(car)
+x = influencePlot(mod.pubs)
+# plot(x)
+```
+
+
+*** {name: right}
+```{r, echo=FALSE}
+x
+```
+
+> * Plots Cook's *d*
+> * relies on standardized residuals (no $t$-distribution)
+> * John Fox and Sanford Weisberg (2011)
+
+--- 
+
+## Summary
+
+> * Carefully investigate and explore your data.
+> * Use the right visualization for your data.
+> * Be careful about influential points.
+> * Find the reason behind these points.
+> * Use your right model for the data.
+> * Not everything is linear!
+> * In this example, our extreme case is the *City of London*.
+
+--- 
+
+## More:
+
+* J. J. Faraway. *Linear Models with R*. Boca Raton: Taylor and Francis, 2005.
+*  A. Field, J. Miles and Z. Field. *Discovering Statistics Using R*. London and Thousand Oaks, CA: Sage, 2012.
+* T. L. Weissgerber, N. M. Milic, S. J. Winham and V. D. Garovic.
+"Beyond Bar and Line Graphs: Time for a New Data Presentation
+Paradigm". In: _PLOS Biology_ 13.4, p. e1002128. DOI:
+[10.1371/journal.pbio.1002128](http://dx.doi.org/10.1371/journal.pbio.1002128).
+* http://tillbergmann.com/blog/ 
+* John Fox's [website on regression diagnostics](http://socserv.socsci.mcmaster.ca/jfox/Courses/Brazil-2009/index.html)
+
+--- 
+
+## Thank you!
+
+<div align="center" style="font-size: 200%">
+<br><br>Thank you for listening!
+<br><br><br>
+Questions?
+</div>
+
